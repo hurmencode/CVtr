@@ -75,6 +75,30 @@ def downsample_block(filters, size, batch_norm=True):
     return result
 
 
+def upsample_block(filters, size, dropout=False):
+    initializer = tf.keras.initializers.GlorotNormal()
+
+    result = tf.keras.Sequential()
+
+    result.add(
+        tf.keras.layers.Conv2DTranspose(filters, size, strides=2, padding='same',
+                                        kernel_initializer=initializer, use_bias=False))
+
+    result.add(tf.keras.layers.BatchNormalization())
+
+    if dropout:
+        result.add(tf.keras.layers.Dropout(0.25))
+
+    result.add(tf.keras.layers.ReLU())
+    return result
+
+
+def output_layer(size):
+    initializer = tf.keras.initializers.GlorotNormal()
+    return tf.keras.layers.Conv2DTranspose(CLASSES, size, strides=2, padding='same',
+                                           kernel_initializer=initializer, activation='sigmoid')
+
+
 def main():
     images = glob.glob('train_dataset_train/train/images/*.png')
     masks = glob.glob('train_dataset_train/train/mask/*.png')
