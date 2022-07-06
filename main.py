@@ -17,7 +17,7 @@ OUTPUT_SIZE = (900, 1440)
 
 
 def load_img(img, mask):
-    """загрузка изображений"""
+    """загрузка изображений и масок и приведение их к нужному формату"""
     img = tf.io.read_file(img)
     img = tf.io.decode_jpeg(img)
     img = tf.image.resize(img, OUTPUT_SIZE)
@@ -117,3 +117,58 @@ def main():
 
     train_dataset = train_dataset.batch(16)
     test_dataset = test_dataset.batch(16)
+
+    """"С пмощью массивов реализуем инкодер и декодер нашей сети. Это поможет на в реализации принципа skip 
+    connection """
+
+    inp_layer = input_layer()
+
+    """Реализуем инкодер"""
+    downsample_stack = [
+        downsample_block(64, 4, batch_norm=False),
+        downsample_block(128, 4),
+        downsample_block(256, 4),
+        downsample_block(512, 4),
+        downsample_block(512, 4),
+        downsample_block(512, 4),
+        downsample_block(512, 4),
+    ]
+
+    """"Реализуем декодер"""
+
+    upsample_stack = [
+        upsample_block(512, 4, dropout=True),
+        upsample_block(512, 4, dropout=True),
+        upsample_block(512, 4, dropout=True),
+        upsample_block(256, 4),
+        upsample_block(128, 4),
+        upsample_block(64, 4),
+    ]
+
+    out_layer = output_layer(4)
+
+    """Реализуем skip connections"""
+
+    x = inp_layer
+
+    downsample_skips = []
+
+    for block in downsample_stack:
+        x = block(x)
+        downsample_skips.append(x)
+
+    downsample_skips = reversed(downsample_skips[:-1])
+
+    for up_block, down_block in zip(upsample_stack, downsample_skips):
+        x = up_block(x)
+        x = tf.keras.layers.Concatenate()([x, down_block])
+
+    out_layer = out_layer(x)
+
+    unet_like = tf.keras.Model(inputs=inp_layer, outputs=out_layer)
+
+    tf.keras.utils.plot_model(unet_like, show_shapes=True, dpi=72)
+
+
+if __name__ == "__main__":
+    main()
