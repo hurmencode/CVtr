@@ -1,8 +1,12 @@
 import glob
+
 import keras.initializers
 import keras.layers
 import tensorflow as tf
-import tensorflow_addons as tfa
+
+import pydot
+import pydotplus
+import graphviz
 
 CLASSES = 5
 
@@ -36,7 +40,7 @@ def load_img(img, mask):
         masks.append(tf.where(tf.equal(mask, float(i)), 1.0, 0.0))
 
     masks = tf.stack(masks, axis=2)
-    masks = tf.reshape(masks, SAMPLE_SIZE + (CLASSES,))
+    masks = tf.reshape(masks, OUTPUT_SIZE + (CLASSES,))
     return img, masks
 
 
@@ -112,8 +116,8 @@ def main():
     dataset = dataset.repeat(10)
     dataset = dataset.map(augmentate_img, num_parallel_calls=tf.data.AUTOTUNE)
 
-    train_dataset = dataset.take(7000).cache()
-    test_dataset = dataset.skip(7000).take(1203).cache()
+    train_dataset = dataset.take(2000).cache()
+    test_dataset = dataset.skip(2000).take(100).cache()
 
     train_dataset = train_dataset.batch(16)
     test_dataset = test_dataset.batch(16)
@@ -167,7 +171,40 @@ def main():
 
     unet_like = tf.keras.Model(inputs=inp_layer, outputs=out_layer)
 
-    tf.keras.utils.plot_model(unet_like, show_shapes=True, dpi=72)
+#    tf.keras.utils.plot_model(unet_like, show_shapes=True, dpi=72)
+
+    """Определим функцию потерь"""
+
+    def dice_mc_metric(a, b):
+        a = tf.unstack(a, axis=3)
+        b = tf.unstack(b, axis=3)
+
+        dice_summ = 0
+
+        for i, (aa, bb) in enumerate(zip(a, b)):
+            numenator = 2 * tf.math.reduce_sum(aa * bb) + 1
+            denomerator = tf.math.reduce_sum(aa + bb) + 1
+            dice_summ += numenator / denomerator
+
+        avg_dice = dice_summ / CLASSES
+
+        return avg_dice
+
+    def dice_mc_loss(a, b):
+        return 1 - dice_mc_metric(a, b)
+
+    def dice_bce_mc_loss(a, b):
+        return 0.3 * dice_mc_loss(a, b) + tf.keras.losses.binary_crossentropy(a, b)
+
+    """Компилируем модель"""
+
+    unet_like.compile(optimizer='adam', loss=[dice_bce_mc_loss], metrics=[dice_mc_metric])
+
+    """"Обучаем нейросеть"""
+
+    history_dice = unet_like.fit(train_dataset, validation_data=test_dataset, epochs=25, initial_epoch=0)
+
+    unet_like.save_weights('E:/CVtr/unet_like')
 
 
 if __name__ == "__main__":
